@@ -1,0 +1,10 @@
+{
+  "name": "final-teams-root",
+  "private": true,
+  "scripts": {
+    "postinstall": "npm install --prefix web",
+    "build": "npm run build --prefix web",
+    "dev": "npm run dev --prefix web",
+    "lint": "npm run lint --prefix web"
+  }
+}
