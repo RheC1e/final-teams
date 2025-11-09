@@ -1,9 +1,9 @@
 import { useEffect, useMemo, useState } from 'react'
 import { useLocation, useNavigate } from 'react-router-dom'
+import type { AuthError } from '@azure/msal-browser'
 import * as teamsJs from '@microsoft/teams-js'
 import { baseLoginScopes } from '../msalConfig'
 import { ensureMsalInitialized, msalInstance } from '../lib/msalInstance'
-import type { AuthError } from '@azure/msal-browser'
 
 type AuthPhase = 'preparing' | 'redirecting' | 'processing' | 'succeeded' | 'failed'
 
@@ -57,13 +57,21 @@ export const AuthPage = () => {
   const [error, setError] = useState<string | null>(null)
 
   useEffect(() => {
-    const triggerLogin = async () => {
+    const triggerLogin = () => {
       setPhase('redirecting')
-      await msalInstance.loginRedirect({
-        scopes: baseLoginScopes,
-        loginHint,
-        redirectStartPage: window.location.href,
-      })
+      msalInstance
+        .loginRedirect({
+          scopes: baseLoginScopes,
+          loginHint,
+          redirectStartPage: window.location.href,
+        })
+        .catch((error) => {
+          console.error(error)
+          const message =
+            error instanceof Error ? error.message : '登入流程發生未預期錯誤，請關閉視窗後重新登入。'
+          setError(message)
+          setPhase('failed')
+        })
     }
 
     const run = async () => {
@@ -79,7 +87,7 @@ export const AuthPage = () => {
         }
 
         if (!account) {
-          await triggerLogin()
+          triggerLogin()
           return
         }
 
@@ -99,8 +107,12 @@ export const AuthPage = () => {
         console.error(err)
         const errorCode = (err as AuthError | undefined)?.errorCode
 
-        if (errorCode === 'no_token_request_cache_error' || errorCode === 'no_account_in_silent_request') {
-          await triggerLogin()
+        if (
+          errorCode === 'no_token_request_cache_error' ||
+          errorCode === 'no_account_in_silent_request' ||
+          errorCode === 'no_account_in_response'
+        ) {
+          triggerLogin()
           return
         }
 
