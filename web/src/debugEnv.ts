@@ -5,6 +5,7 @@ const debugEnv = () => {
     redirectUri: import.meta.env.VITE_AAD_REDIRECT_URI,
     defaultScopes: import.meta.env.VITE_AAD_DEFAULT_SCOPES,
   }
+  // eslint-disable-next-line no-console
   console.info('[debugEnv]', env)
   return env
 }
