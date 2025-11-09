@@ -3,6 +3,7 @@ import { useLocation, useNavigate } from 'react-router-dom'
 import * as teamsJs from '@microsoft/teams-js'
 import { baseLoginScopes } from '../msalConfig'
 import { ensureMsalInitialized, msalInstance } from '../lib/msalInstance'
+import type { AuthError } from '@azure/msal-browser'
 
 type AuthPhase = 'preparing' | 'redirecting' | 'processing' | 'succeeded' | 'failed'
 
@@ -56,6 +57,15 @@ export const AuthPage = () => {
   const [error, setError] = useState<string | null>(null)
 
   useEffect(() => {
+    const triggerLogin = async () => {
+      setPhase('redirecting')
+      await msalInstance.loginRedirect({
+        scopes: baseLoginScopes,
+        loginHint,
+        redirectStartPage: window.location.href,
+      })
+    }
+
     const run = async () => {
       try {
         setPhase('processing')
@@ -69,12 +79,7 @@ export const AuthPage = () => {
         }
 
         if (!account) {
-          setPhase('redirecting')
-          await msalInstance.loginRedirect({
-            scopes: baseLoginScopes,
-            loginHint,
-            redirectStartPage: window.location.href,
-          })
+          await triggerLogin()
           return
         }
 
@@ -92,6 +97,13 @@ export const AuthPage = () => {
         }
       } catch (err) {
         console.error(err)
+        const errorCode = (err as AuthError | undefined)?.errorCode
+
+        if (errorCode === 'no_token_request_cache_error' || errorCode === 'no_account_in_silent_request') {
+          await triggerLogin()
+          return
+        }
+
         const message =
           err instanceof Error ? err.message : '登入流程發生未預期錯誤，請關閉視窗後重新登入。'
         setError(message)
