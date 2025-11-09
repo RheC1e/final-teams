@@ -11,3 +11,9 @@ export const ensureMsalInitialized = async () => {
   }
 }
 
+if (typeof window !== 'undefined') {
+  ;(window as Window & typeof globalThis & { __msalInstance?: typeof msalInstance; __msalConfig?: typeof msalConfig }).__msalInstance =
+    msalInstance
+  ;(window as Window & typeof globalThis & { __msalConfig?: typeof msalConfig }).__msalConfig = msalConfig
+}
+

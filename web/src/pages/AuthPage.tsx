@@ -59,7 +59,9 @@ export const AuthPage = () => {
 
   useEffect(() => {
     const triggerLogin = () => {
-      debugEnv()
+      const env = debugEnv()
+      console.info('[msal.config]', msalInstance.getConfiguration().auth)
+      console.info('[msal.env]', env)
       setPhase('redirecting')
       msalInstance
         .loginRedirect({
@@ -106,7 +108,7 @@ export const AuthPage = () => {
           window.close()
         }
       } catch (err) {
-        console.error(err)
+        console.error('[auth.redirect.error]', err)
         const errorCode = (err as AuthError | undefined)?.errorCode
 
         if (
@@ -118,8 +120,28 @@ export const AuthPage = () => {
           return
         }
 
+        const serialized =
+          err && typeof err === 'object'
+            ? JSON.stringify(
+                err,
+                (_, value) => {
+                  if (value instanceof Error) {
+                    return {
+                      name: value.name,
+                      message: value.message,
+                      stack: value.stack,
+                    }
+                  }
+                  return value
+                },
+                2,
+              )
+            : String(err)
+
         const message =
-          err instanceof Error ? err.message : '登入流程發生未預期錯誤，請關閉視窗後重新登入。'
+          err instanceof Error
+            ? `${err.message} (${errorCode ?? 'no_code'})`
+            : '登入流程發生未預期錯誤，請關閉視窗後重新登入。'
         setError(message)
         setPhase('failed')
 
@@ -128,6 +150,8 @@ export const AuthPage = () => {
         if (!notified) {
           postMessageToOpener(payload)
         }
+
+        console.info('[auth.error.serialized]', serialized)
       }
     }
 
