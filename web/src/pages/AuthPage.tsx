@@ -4,6 +4,7 @@ import type { AuthError } from '@azure/msal-browser'
 import * as teamsJs from '@microsoft/teams-js'
 import { baseLoginScopes } from '../msalConfig'
 import { ensureMsalInitialized, msalInstance } from '../lib/msalInstance'
+import debugEnv from '../debugEnv'
 
 type AuthPhase = 'preparing' | 'redirecting' | 'processing' | 'succeeded' | 'failed'
 
@@ -58,6 +59,7 @@ export const AuthPage = () => {
 
   useEffect(() => {
     const triggerLogin = () => {
+      debugEnv()
       setPhase('redirecting')
       msalInstance
         .loginRedirect({
