@@ -1,0 +1,174 @@
+## RHEMA Teams 自動登入專案技術總結
+
+### 0. 概覽
+
+- **目前採用路線**：Teams 內建彈窗 OAuth（`microsoftTeams.authentication.authenticate()` + `MSAL loginRedirect`）。
+- **體驗**：首次或 Token 過期時會顯示 Microsoft 授權頁，其餘時間使用快取的 Graph Token，重新整理時不再重複跳轉。
+- **產出**：顯示名稱、中文姓名、帳號、使用者 ID 皆由 Microsoft Graph `/me` 回傳，確認為真正的 Microsoft 365 登入。
+
+### Final Teams 登入情境對照（2025 版）
+
+| 環境代號 | 實際情境 | 登入啟動方式 | 備註 |
+| --- | --- | --- | --- |
+| `desktop` | Teams 桌面版 | 內嵌彈窗（`teams.authentication.authenticate`） | Teams WebView 必須使用彈窗，才能取得登入結果並關閉視窗。 |
+| `chrome-teams` | Chrome 瀏覽器中的 Teams Web | 新分頁開啟 `/#/auth` | **注意：Teams Web 與 Chrome 直連不同。** 授權頁透過 `postMessage` 回傳結果。 |
+| `safari-teams` | Safari 瀏覽器中的 Teams Web | 新分頁開啟 `/#/auth` | Safari 需搭配 `storeAuthStateInCookie=true` 才能共享登入狀態。 |
+| `chrome-web` | Chrome 直連 Vercel 網頁 | 新分頁開啟 `/#/auth` | `AuthPage` 完成登入後自動關閉分頁並回傳。 |
+| `safari-web` | Safari 直連 Vercel 網頁 | 新分頁開啟 `/#/auth` | Safari 可能會阻擋彈窗，主頁會提示使用者開放。 |
+| `edge-web / other` | 其他瀏覽器直接造訪 | 新分頁開啟 `/#/auth` | 預設 fallback，必要時提示允許分頁。 |
+
+> ✅「Teams Web」= 透過 `teams.microsoft.com` 內嵌 iframe 執行。  
+> ✅「直連網頁」= 使用者直接輸入 Vercel 網址打開。兩者不可混淆。
+
+### 1. 以往專案失敗的原因（來源：`以往teams失敗自動登入/`）
+
+**pwa-demo（請款 PWA）**
+- 採純 MSAL.js `loginRedirect/loginPopup` 流程，適合一般瀏覽器，但在 Teams 桌面版的 WebView 中會被攔截或需要互動，無法做到自動登入。
+- 沒有整合 `@microsoft/teams-js`，無法存取 Teams 提供的 SSO context；結果是登入流程完全脫離 Teams，導致需要額外授權視窗。
+
+**rhema-pwa-demo（第二版請款 PWA）**
+- 架構仍以單頁 PWA 為核心，登入邏輯同樣依賴 MSAL redirect，缺少 Teams manifest 與 `webApplicationInfo` 設定。
+- 重新導向 URI 與 Teams 內嵌 iframe 不相容，造成 Teams 桌面版中無法完成登入或卡在 redirect loop。
+
+**teams-sso-test（SSO 測試專案）**
+- 已啟用 Teams SDK 與 manifest，但流程嘗試同時取得「應用程式 Token」與 Microsoft Graph Token。
+- `getAuthToken()` 取得的是 **應用程式自己的 Token**（針對 `api://...` 資源），沒有 Graph 權限，直接呼叫 `https://graph.microsoft.com/v1.0/me` 會回傳 401。
+- 為補救而引入 MSAL（`ssoSilent` / `acquireTokenSilent`），流程複雜且仍需互動授權；桌面版快取舊腳本時就容易再次回到 401 錯誤。
+
+### 2. 本次成功專案的核心做法（`main` 分支現況）
+
+**技術重點**
+- 以 Vite + React + TypeScript 建置，使用 `@microsoft/teams-js@2.x`。
+- 啟動後立即呼叫 Teams 認證流程，在桌面版中會跳出內嵌授權視窗。
+- 授權頁 (`public/auth.html`) 先嘗試 `ssoSilent`，若需要互動則改走 `loginRedirect`（無彈窗、避免被阻擋）。
+- 取得 Microsoft Graph Access Token 後，呼叫 `/me` 取得顯示名稱、中文姓/名、帳號與使用者 ID。
+- 於前端快取 Graph Token（`sessionStorage`），僅在失效或明確錯誤時才重新授權，避免重新整理頁面時重複顯示登入動作。
+
+**程式流程（`src/App.tsx`）**
+1. `await microsoftTeams.app.initialize()`。
+2. `await microsoftTeams.app.getContext()` 取得 Teams 使用者資訊與租戶 ID。
+3. 呼叫 `microsoftTeams.authentication.authenticate()` 開啟 `auth.html`，將 `loginHint` 帶入授權頁。
+4. 授權頁先嘗試 `ssoSilent` 取得 Token；若失敗則重導至 Microsoft 登入頁完成授權，回到同一頁後透過 `handleRedirectPromise()` 提取 Token，最後 `notifySuccess` 回主頁。
+5. 主頁使用 `fetch('https://graph.microsoft.com/v1.0/me')` 取得真實帳號資訊並顯示。
+
+- **必要設定**
+  - `manifest.json`
+    - `id` 與 `webApplicationInfo.id`：`33abd69a-d012-498a-bddb-8608cbf10c2d`
+    - `webApplicationInfo.resource`：`api://new-teams-potp.vercel.app/33abd69a-d012-498a-bddb-8608cbf10c2d`
+    - `contentUrl` / `websiteUrl` / `validDomains`：`https://new-teams-potp.vercel.app`
+  - Azure Entra ID
+    - 應用程式註冊同上 Client ID。
+    - SPA Redirect URI 新增：`https://new-teams-potp.vercel.app`
+    - SPA Redirect URI 新增：`https://new-teams-potp.vercel.app/auth.html`
+    - Application ID URI：`api://new-teams-potp.vercel.app/33abd69a-d012-498a-bddb-8608cbf10c2d`
+    - 定義 scope：`access_as_user`（完整值同 Application ID URI + `/access_as_user`）
+    - 授權客戶端：Teams 桌面 `1fec8e78-bce4-4aaf-ab1b-5451cc387264`
+
+**部署與測試流程**
+1. **推送程式碼**：`git push origin main`
+2. **Vercel 自動部署**：確認 Deployments 最新狀態為 Ready，必要時 `Redeploy`。
+3. **Teams 套件**：
+   - 執行 `zip -r teams-autologin-package.zip manifest.json icon-color.png icon-outline.png`
+   - 在 Teams 管理中心上傳 ZIP。
+4. **Azure Entra 設定**：確認兩個 SPA Redirect URI 都存在（根網址與 `/auth.html`）。
+5. **驗證**：Teams 桌面版按 `⌘ + R` 重新整理；應跳出授權對話框，授權後畫面顯示 Graph 回傳的名稱、帳號與 ID。
+
+**快取刷新建議**
+- 若 Teams 未抓到新版，可在 `contentUrl` 加查詢參數（例：`?build=c074614`）。
+- Mac 清快取：刪除 `~/Library/Containers/com.microsoft.teams2.*` 與 `~/Library/Group Containers/UBF8T346G9.com.microsoft.teams` 後重開 Teams（僅需在重大更新時進行）。
+
+### 3. 未來專案複製手冊
+
+1. **複製此專案**（或以 `create-vite` 建立 React/TS，再套用 `src/App.tsx` 架構）。
+2. **調整 Vercel 網域**：
+   - 更新 `manifest.json` 的 `contentUrl / validDomains / webApplicationInfo.resource`。
+   - 於 Azure Entra ID 同步更新 Redirect URI 與 Application ID URI。
+3. **部署與上傳**：照上節部署流程操作。
+4. **驗證邏輯**：沿用 `auth.html` + `loginRedirect` 流程即可；只要確保 Azure 的 Redirect URI 正確，Teams 桌面版便能自動帶入帳號並完成授權。
+5. **擴充需求**：若要調用更多 Graph API，可在 Azure Entra ID 增加對應 scope，授權頁會一併完成同意；若需調用自家 API，可在後端驗證此次取得的 Graph Token 或實作 On-Behalf-Of 流程。
+
+### 5. 未來升級：Tab SSO + On-Behalf-Of（路線 A）
+
+若要完全移除互動視窗，可改採「Tab SSO + 後端 OBO」：
+
+1. **前端**
+   - 僅呼叫 `authentication.getAuthToken()` 取得 Tab SSO Token。
+   - 將該 Token 傳給後端（例如 Vercel Serverless / Azure Function）。
+
+2. **後端（OBO 流程）**
+   - 使用 MSAL（Node/.NET/Java 等）呼叫 `POST https://login.microsoftonline.com/{tenant}/oauth2/v2.0/token`。
+   - 參數包含 `client_id`, `client_secret`/證書、`requested_token_use=on_behalf_of`、`assertion`（前端 token）與目標 scope（如 `https://graph.microsoft.com/.default`）。
+   - 換得 Graph Access Token 後，後端去呼叫 Graph `/me` 或其他端點，再回傳資料給前端。
+
+3. **管理與安全**
+   - 需要在 Azure Entra ID 設定 Client Secret 或憑證，並於部署平台安全地儲存。
+   - 可在 Teams Admin Center 先行 Grant org-wide consent，確保使用者首次即能零互動登入。
+
+此方案能達成真正的「無視窗自動登入」，並適合在後端還需要調用多個受保護 API 時使用。現階段若無後端資源，可持續使用既有的路線 B；待後端就緒後再切換至路線 A 即可。
+
+### 6. Final Teams 專案設定步驟（2025 重新整理）
+
+1. **Azure Entra ID → App registrations → 選擇 Final Teams 應用程式**
+   - `Authentication`
+     - 平台選擇 **Single-page application (SPA)**。
+     - Redirect URI：
+       - `https://<your-vercel-domain>/`
+       - （保留開發用）`http://localhost:5173/`
+     - `Implicit grant` 不必勾選。
+     - `Front-channel logout URL` 可留空。
+   - `Token configuration`
+     - 如需使用者電子郵件，在 Optional claims 新增 `email`（可選）。
+
+2. **Expose an API**
+   - `Application ID URI`：`api://<your-vercel-domain>/<client-id>`（需與 Teams manifest `resource` 欄位一致）。
+   - `Scopes defined by this API`：保留 `access_as_user`。
+   - `Authorized client applications`：確認已包含
+     - `1fec8e78-bce4-4aaf-ab1b-5451cc387264`（Teams 桌面版）
+     - `5e3ce6c0-2b1f-4285-8d4b-75ee78787346`（Teams Web）
+
+3. **API permissions**
+   - 必要委派權限：
+     - `User.Read`
+     - `email`
+     - `profile`
+     - （建議）`offline_access`，確保跨分頁取得 Refresh Token。
+   - 完成後務必按下「Grant admin consent for RHEMA」。
+
+4. **Branding & properties**
+   - `Home page URL` 及 `Terms of service URL` 可填入 Vercel 正式網域，供登入頁面顯示資訊。
+
+5. **Client secret（必要時）**
+   - 若未來改採 OBO 流程，需要在 `Certificates & secrets` 建立新 secret，並將值放入後端環境變數。
+
+6. **Teams 應用程式套件**
+   - `manifest.json`
+     - `contentUrl` / `websiteUrl` → `https://<your-vercel-domain>/index.html#/`
+     - `webApplicationInfo.id` → Final Teams 的 Client ID。
+     - `webApplicationInfo.resource` → `api://<your-vercel-domain>/<client-id>`
+   - Icons 可沿用現有設計，最後壓縮為 ZIP 上傳。
+
+> ⚠️ Vercel 網域確認後，再補上最終值給我即可替換設定與 manifest。
+
+### 4. 快速指令摘要
+
+```bash
+# 開發
+npm install
+npm run dev
+
+# 建置
+npm run build
+
+# 產生 Teams 套件 ZIP
+zip -r teams-autologin-package.zip manifest.json icon-color.png icon-outline.png
+
+# Git 推送
+git add .
+git commit -m "更新內容"
+git push
+```
+
+---
+
+只要依照以上設定與流程，即可複製此次成功的 Teams 自動登入體驗；若需擴充至其他功能，可在此基礎上延伸。提交此文件即可讓未來的專案快速對焦於成功配置。
+
