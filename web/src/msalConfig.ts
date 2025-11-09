@@ -1,9 +1,11 @@
 import type { BrowserCacheLocation, Configuration } from '@azure/msal-browser'
 
-const clientId = import.meta.env.VITE_AAD_CLIENT_ID
-const tenantId = import.meta.env.VITE_AAD_TENANT_ID
-const redirectUri = import.meta.env.VITE_AAD_REDIRECT_URI ?? window.location.origin
-const knownAuthorities = import.meta.env.VITE_AAD_KNOWN_AUTHORITIES
+const sanitize = (value?: string) => value?.trim() || undefined
+
+const clientId = sanitize(import.meta.env.VITE_AAD_CLIENT_ID) ?? ''
+const tenantId = sanitize(import.meta.env.VITE_AAD_TENANT_ID)
+const redirectUri = sanitize(import.meta.env.VITE_AAD_REDIRECT_URI) ?? window.location.origin
+const knownAuthorities = sanitize(import.meta.env.VITE_AAD_KNOWN_AUTHORITIES)
 
 if (!clientId) {
   console.warn('VITE_AAD_CLIENT_ID 未設定，MSAL 將無法正常運作。')
