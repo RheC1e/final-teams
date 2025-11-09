@@ -57,7 +57,7 @@ export const HomePage = () => {
     async (homeAccountId?: string) => {
       setErrorMessage(null)
       setAuthStatus('pending')
-       setProfile(null)
+      setProfile(null)
       await ensureMsalInitialized()
 
       const activeAccount =
