@@ -19,7 +19,7 @@ export const msalConfig: Configuration = {
   auth: {
     clientId,
     authority: tenantId
-      ? `https://login.microsoftonline.com/${tenantId}`
+      ? `https://login.microsoftonline.com/${tenantId}/`
       : 'https://login.microsoftonline.com/common',
     redirectUri,
     knownAuthorities: knownAuthorities
