@@ -1,0 +1,58 @@
+{
+  "$schema": "https://developer.microsoft.com/json-schemas/teams/v1.16/MicrosoftTeams.schema.json",
+  "manifestVersion": "1.16",
+  "version": "1.0.0",
+  "id": "33abd69a-d012-498a-bddb-8608cbf10c2d",
+  "packageName": "com.rhema.finalteams",
+  "name": {
+    "short": "Final Teams",
+    "full": "Final Teams 自動登入"
+  },
+  "developer": {
+    "name": "RHEMA",
+    "websiteUrl": "https://final-teams.vercel.app/",
+    "privacyUrl": "https://final-teams.vercel.app/",
+    "termsOfUseUrl": "https://final-teams.vercel.app/"
+  },
+  "description": {
+    "short": "Final Teams 自動登入範例",
+    "full": "Final Teams 提供在 Microsoft Teams 與一般瀏覽器皆可使用的自動登入示範。"
+  },
+  "accentColor": "#2754c4",
+  "icons": {
+    "color": "icon-color.png",
+    "outline": "icon-outline.png"
+  },
+  "staticTabs": [
+    {
+      "entityId": "finalTeamsTab",
+      "scopes": ["personal"],
+      "name": "Final Teams",
+      "contentUrl": "https://final-teams.vercel.app/index.html#/",
+      "websiteUrl": "https://final-teams.vercel.app/",
+      "searchScopes": ["personal"]
+    }
+  ],
+  "configurableTabs": [],
+  "supportedChannelTypes": ["groupchat", "channel"],
+  "webApplicationInfo": {
+    "id": "33abd69a-d012-498a-bddb-8608cbf10c2d",
+    "resource": "api://final-teams.vercel.app/33abd69a-d012-498a-bddb-8608cbf10c2d"
+  },
+  "authorization": {
+    "permissions": {
+      "resourceSpecific": [
+        {
+          "name": "TeamsTab.Read.User",
+          "type": "Delegated"
+        }
+      ]
+    }
+  },
+  "permissions": {
+    "devicePermissions": []
+  },
+  "validDomains": [
+    "final-teams.vercel.app"
+  ]
+}
